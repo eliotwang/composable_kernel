@@ -101,7 +101,9 @@ auto create_args(int argc, char* argv[])
                 "0: no mask, 1: top-left(same as 't'), 2:bottom-right(same as 'b')\n"
                 "'t', top-left causal mask, 'b', bottom-r causal mask\n"
                 "'t:l,r', top-left sliding window attn(swa) with FA style left right size\n"
+                "'t:l,r,s', top-left attention sinks with FA style left right and sink size\n"
                 "'b:l,r', bottom-r sliding window attn(swa) with FA style left right size\n"
+                "'b:l,r,s', bottom attention sinks with FA style left right and sink size\n"
                 "'xt:window_size', xformer style masking from top-left, window_size negative is "
                 "causal, positive is swa\n"
                 "'xb:window_size', xformer style masking from bottom-r, window_size negative is "
@@ -792,7 +794,6 @@ bool run(const ck_tile::ArgParser& arg_parser)
     alibi_slope_buf.ToDevice(alibi_slope_host.data());
     block_table_buf.ToDevice(block_table_host.data());
     cache_batch_idx_buf.ToDevice(cache_batch_idx_host.data());
-
     // clang-format off
     auto layout_str = [&](bool permute){
         if(permute) return std::string("bhsd");
@@ -1019,6 +1020,7 @@ bool run(const ck_tile::ArgParser& arg_parser)
 
             args.window_size_left  = mask.left;
             args.window_size_right = mask.right;
+            args.sink_size         = mask.sink;
             args.mask_type         = static_cast<ck_tile::index_t>(mask.type);
 
             if constexpr(std::is_same_v<fmha_fwd_args, std::decay_t<decltype(args)>>)
@@ -1451,18 +1453,20 @@ bool run(const ck_tile::ArgParser& arg_parser)
             ck_tile::reference_batched_masking<SaccDataType>(
                 s_host_ref,
                 ck_tile::make_generic_attention_mask_from_lr_window<FmhaMasks::GenericMask>(
-                    mask.left, mask.right, real_seqlen_q, real_seqlen_k));
+                    mask.left, mask.right, mask.sink, real_seqlen_q, real_seqlen_k));
         }
         else
         {
             // if left window size is negative, means causal
             // else means generic (for current batch)
+            printf("mask.left=%d, mask.right=%d, real_seqlen_q=%d, real_seqlen_k=%d\n", mask.left, mask.right, real_seqlen_q, real_seqlen_k);
             if(mask.left < 0)
                 ck_tile::reference_batched_masking<SaccDataType>(
                     s_host_ref,
                     ck_tile::make_generic_attention_mask_from_lr_window<FmhaMasks::CausalMask>(
                         mask.left,
                         mask.right,
+                        mask.sink,
                         real_seqlen_q,
                         real_seqlen_k,
                         mask.type == mask_enum::mask_top_left));
@@ -1472,6 +1476,7 @@ bool run(const ck_tile::ArgParser& arg_parser)
                     ck_tile::make_generic_attention_mask_from_lr_window<FmhaMasks::GenericMask>(
                         mask.left,
                         mask.right,
+                        mask.sink,
                         real_seqlen_q,
                         real_seqlen_k,
                         mask.type == mask_enum::mask_top_left));

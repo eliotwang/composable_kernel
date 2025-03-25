@@ -86,21 +86,22 @@ struct GenericAttentionMask
     static constexpr const char* name = impl::MaskName<IsMasking, IsLocal>::name;
 
     CK_TILE_HOST_DEVICE GenericAttentionMask(index_t y_total_, index_t x_total_)
-        : GenericAttentionMask(0, 0, y_total_, x_total_)
+        : GenericAttentionMask(0, 0, 0, y_total_, x_total_)
     {
     }
 
     CK_TILE_HOST_DEVICE
-    GenericAttentionMask(index_t y_, index_t x_, index_t y_total_, index_t x_total_)
-        : y(y_), x(x_), y_total(y_total_), x_total(x_total_)
+    GenericAttentionMask(index_t y_, index_t x_, index_t sink_, index_t y_total_, index_t x_total_)
+        : y(y_), x(x_), sink(sink_), y_total(y_total_), x_total(x_total_)
     {
     }
     template <typename MaskCoordinates>
     CK_TILE_HOST_DEVICE GenericAttentionMask(const MaskCoordinates& mask_coord)
         : y(mask_coord.at(number<0>{})),
           x(mask_coord.at(number<1>{})),
-          y_total(mask_coord.at(number<2>{})),
-          x_total(mask_coord.at(number<3>{}))
+          sink(mask_coord.at(number<2>{})),
+          y_total(mask_coord.at(number<3>{})),
+          x_total(mask_coord.at(number<4>{}))
     {
     }
 
@@ -186,11 +187,19 @@ struct GenericAttentionMask
 
             if constexpr(IsLocal)
             {
-                return i_x < x_start || i_x >= x_end;
+                //printf("IsLocal x_start=%d, x_end=%d, x=%d, x_total=%d, y_total=%d, y=%d, i_y=%d, i_x=%d\n", x_start, x_end, x, x_total, y_total, y, i_y, i_x);
+                if (i_x < sink) 
+                    return false;
+                else
+                    return i_x < x_start || i_x >= x_end;
             }
             else
             {
-                return i_x >= x_end || i_y >= y_total;
+                //printf("x_start=%d, x_end=%d, x=%d, x_total=%d, y_total=%d, y=%d, i_y=%d, i_x=%d\n", x_start, x_end, x, x_total, y_total, y, i_y, i_x);
+                if (i_x < sink) 
+                    return false;
+                else
+                    return i_x >= x_end || i_y >= y_total;
             }
         }
     }
@@ -228,7 +237,7 @@ struct GenericAttentionMask
     }
 
     private:
-    index_t y, x;
+    index_t y, x, sink;
     index_t y_total, x_total;
 };
 
@@ -251,21 +260,22 @@ struct SimplifiedGenericAttentionMask
     static constexpr const char* name = impl::SimplifiedMaskName<IsMasking>::name;
 
     CK_TILE_HOST_DEVICE SimplifiedGenericAttentionMask(index_t y_total_, index_t x_total_)
-        : SimplifiedGenericAttentionMask(0, 0, y_total_, x_total_)
+        : SimplifiedGenericAttentionMask(0, 0, 0, y_total_, x_total_)
     {
     }
 
     CK_TILE_HOST_DEVICE
-    SimplifiedGenericAttentionMask(index_t y_, index_t x_, index_t y_total_, index_t x_total_)
-        : y(y_), x(x_), y_total(y_total_), x_total(x_total_)
+    SimplifiedGenericAttentionMask(index_t y_, index_t x_, index_t sink_, index_t y_total_, index_t x_total_)
+        : y(y_), x(x_), sink(sink_), y_total(y_total_), x_total(x_total_)
     {
     }
     template <typename MaskCoordinates>
     CK_TILE_HOST_DEVICE SimplifiedGenericAttentionMask(const MaskCoordinates& mask_coord)
         : y(mask_coord.at(number<0>{})),
           x(mask_coord.at(number<1>{})),
-          y_total(mask_coord.at(number<2>{})),
-          x_total(mask_coord.at(number<3>{}))
+          sink(mask_coord.at(number<2>{})),
+          y_total(mask_coord.at(number<3>{})),
+          x_total(mask_coord.at(number<4>{}))
     {
     }
 
@@ -359,8 +369,10 @@ struct SimplifiedGenericAttentionMask
         {
             index_t x_start = -y + i_y + 1;          // this could be negative, but it's fine
             index_t x_end   = min(i_y + x, x_total); // need min in case x is padded
-
-            return i_x < x_start || i_x >= x_end || i_y >= y_total;
+            if (i_x < sink) 
+                return false;
+            else 
+                return i_x < x_start || i_x >= x_end || i_y >= y_total;
         }
     }
 
@@ -397,7 +409,7 @@ struct SimplifiedGenericAttentionMask
     }
 
     private:
-    index_t y, x;
+    index_t y, x, sink;
     index_t y_total, x_total;
 };
 
@@ -408,6 +420,7 @@ struct SimplifiedGenericAttentionMask
 CK_TILE_HOST_DEVICE constexpr auto
 make_generic_attention_mask_coordinates_from_lr_window(index_t left_size,
                                                        index_t right_size,
+                                                       index_t sink_size,
                                                        index_t y_total,
                                                        index_t x_total,
                                                        bool is_top_left = true)
@@ -425,19 +438,22 @@ make_generic_attention_mask_coordinates_from_lr_window(index_t left_size,
     index_t x = 1 + right_size + x_tmp;
     index_t y = 1 + left_size + y_tmp;
 
-    return ck_tile::make_tuple(y, x, y_total, x_total);
+    //printf("is_top_left=%d, right_size=%d, left_size=%d, x_tmp=%d, y_tmp=%d, y=%d, x=%d, y_total=%d, x_total=%d\n", is_top_left, right_size, left_size, x_tmp, y_tmp, y, x, y_total, x_total);
+
+    return ck_tile::make_tuple(y, x, sink_size, y_total, x_total);
 }
 
 template <typename MaskType>
 CK_TILE_HOST_DEVICE constexpr auto
 make_generic_attention_mask_from_lr_window(index_t left_size,
                                            index_t right_size,
+                                           index_t sink_size,
                                            index_t y_total,
                                            index_t x_total,
                                            bool is_top_left = true)
 {
     auto r = make_generic_attention_mask_coordinates_from_lr_window(
-        left_size, right_size, y_total, x_total, is_top_left);
-    return MaskType{r.at(number<0>{}), r.at(number<1>{}), y_total, x_total};
+        left_size, right_size, sink_size, y_total, x_total, is_top_left);
+    return MaskType{r.at(number<0>{}), r.at(number<1>{}), sink_size, y_total, x_total};
 }
 } // namespace ck_tile
