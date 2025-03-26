@@ -34,7 +34,7 @@ enum struct GenericAttentionMaskEnum
     1 1 1 1 1 * * *    1 1 1 1 1 1 1 1    1 1 1 1 1 1 1 1    1 1 1 1 1 1 1 1
     l=7,-1/r=0(tl)     l=7,-1/r=0(br)
 
-    x=1/y=2            x=4/y=2            x=6/y=2            x=8/y=2
+    x=1/y=2            x=4/y=2  (1)          x=6/y=2            x=8/y=2
     1 * * * * * * *    1 1 1 1 * * * *    1 1 1 1 1 1 * *    1 1 1 1 1 1 1 1
     1 1 * * * * * *    1 1 1 1 1 * * *    1 1 1 1 1 1 1 *    1 1 1 1 1 1 1 1
     * 1 1 * * * * *    * 1 1 1 1 1 * *    * 1 1 1 1 1 1 1    * 1 1 1 1 1 1 1
@@ -43,14 +43,16 @@ enum struct GenericAttentionMaskEnum
     l=1/r=0(tl)        l=1/r=3(tl)        l=1/r=5(tl)        l=1/r=7(tl)
                        l=4/r=0(br)        l=4/r=2(br)        l=4/r=4(br)
 
-                       x=4/y=-1           x=6/y=-1            x=8/y=-1
+                       x=4/y=-1 (1)            x=6/y=-1            x=8/y=-1
+                                                             1 1 1 1 1 1 1 1
+                                                             * 1 1 1 1 1 1 1 
                        * * 1 1 * * * *    * * 1 1 1 1 * *    * * 1 1 1 1 1 1
                        * * * 1 1 * * *    * * * 1 1 1 1 *    * * * 1 1 1 1 1
                        * * * * 1 1 * *    * * * * 1 1 1 1    * * * * 1 1 1 1
                        * * * * * 1 1 *    * * * * * 1 1 1    * * * * * 1 1 1
                        * * * * * * 1 1    * * * * * * 1 1    * * * * * * 1 1
 
-    x=-2/y=5           x=1/y=5(top-left)  x=0/y=5(botm-r)
+    x=-2/y=5         x=1/y=5(top-left)  x=0/y=5(botm-r)
     * * * * * * * *    1 * * *            * * * *
     * * * * * * * *    1 1 * *            1 * * *
     * * * * * * * *    1 1 1 *            1 1 * *
@@ -188,7 +190,7 @@ struct GenericAttentionMask
             if constexpr(IsLocal)
             {
                 //printf("IsLocal x_start=%d, x_end=%d, x=%d, x_total=%d, y_total=%d, y=%d, i_y=%d, i_x=%d\n", x_start, x_end, x, x_total, y_total, y, i_y, i_x);
-                if (i_x < sink) 
+                 if ((i_x < sink) && (y < y_total) && ((i_y + x) > 1))  
                     return false;
                 else
                     return i_x < x_start || i_x >= x_end;
@@ -196,7 +198,7 @@ struct GenericAttentionMask
             else
             {
                 //printf("x_start=%d, x_end=%d, x=%d, x_total=%d, y_total=%d, y=%d, i_y=%d, i_x=%d\n", x_start, x_end, x, x_total, y_total, y, i_y, i_x);
-                if (i_x < sink) 
+                 if ((i_x < sink) && (y < y_total) && ((i_y + x) > 1))  
                     return false;
                 else
                     return i_x >= x_end || i_y >= y_total;
@@ -369,7 +371,7 @@ struct SimplifiedGenericAttentionMask
         {
             index_t x_start = -y + i_y + 1;          // this could be negative, but it's fine
             index_t x_end   = min(i_y + x, x_total); // need min in case x is padded
-            if (i_x < sink) 
+            if ((i_x < sink) && (y < y_total) && ((i_y + x) > 1)) 
                 return false;
             else 
                 return i_x < x_start || i_x >= x_end || i_y >= y_total;
